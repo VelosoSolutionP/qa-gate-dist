@@ -1,0 +1,11 @@
+{
+  "name": "qa-gate",
+  "version": "1.1.0",
+  "description": "QA-Gate — simulacao em browser real antes do commit. Injeta bug, exige mensagem amigavel + console limpo. So commita no verde.",
+  "author": {
+    "name": "DevPoint Innovation",
+    "url": "https://devpointinnovation.com.br"
+  },
+  "homepage": "https://devpointinnovation.com.br",
+  "keywords": ["qa", "testing", "pre-commit", "playwright", "livewire", "laravel"]
+}

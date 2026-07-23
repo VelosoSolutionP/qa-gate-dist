@@ -1,0 +1,246 @@
+{
+  "version": "1.0",
+  "prefix": "VS",
+  "note": "Catalogo de mensagens padrao do Orquestrar IA. Curtas (economia de token). Consumido por hooks (deterministico) e MCP (generativo).",
+  "families": {
+    "REQ": { "name": "Requisitos", "layer": "hook", "event": "UserPromptSubmit / /task", "purpose": "Triagem de requisito ANTES de acionar a IA. Bloqueia execucao insegura." },
+    "AUD": { "name": "Auditoria/Gate", "layer": "hook", "event": "PreToolUse git commit/push", "purpose": "Checklist de qualidade no commit/push." },
+    "AI":  { "name": "Escalation", "layer": "engine", "event": "decisao call_ai", "purpose": "Decide quando escalar pro modelo (causa raiz, arquitetura, seguranca)." },
+    "OK":  { "name": "Aprovacao", "layer": "hook", "event": "pos-checagem", "purpose": "Libera commit/push/execucao." },
+    "CTX": { "name": "Contexto", "layer": "hook", "event": "SessionStart", "purpose": "Carrega memory/contexto do projeto." },
+    "MON": { "name": "Monitoramento", "layer": "consent", "event": "opt-in", "purpose": "Consentimento LGPD p/ coleta tecnica (docker/rede/desempenho)." }
+  },
+  "checklist_requisito": [
+    { "key": "descricao", "label": "Descricao da tarefa", "required": true },
+    { "key": "objetivo", "label": "Objetivo / resultado esperado", "required": true },
+    { "key": "criterio_aceite", "label": "Criterio de aceite", "required": true },
+    { "key": "arquivo_afetado", "label": "Arquivo(s)/modulo afetado", "required": false },
+    { "key": "regra_negocio", "label": "Regra de negocio", "required": false },
+    { "key": "origem", "label": "Origem (dev/main/hml) — p/ branch", "required": false }
+  ],
+  "messages": [
+    {
+      "code": "VS-REQ-001", "status": "BLOCKED", "title": "Contexto insuficiente",
+      "short": "[VS-REQ-001] BLOCKED — contexto insuficiente para execucao segura.",
+      "dev_msg": "Tarefa bloqueada: contexto insuficiente. Complemente para execucao segura:\n{faltando}",
+      "when": "UserPromptSubmit: o solicitante inicia tarefa sem os campos obrigatorios (descricao/objetivo/criterio de aceite).",
+      "how": "Hook aborta o turno e devolve esta msg + lista dinamica de {faltando}. A IA NAO e acionada.",
+      "fields_dynamic": ["faltando"]
+    },
+    {
+      "code": "VS-REQ-002", "status": "WAITING", "title": "Aguardando requisito",
+      "short": "[VS-REQ-002] WAITING — tarefa no aguardo de requisito.",
+      "dev_msg": "Tarefa registrada, mas em espera. Aguardando: {faltando}. Envie para liberar a execucao.",
+      "when": "Quem abriu a tarefa optou por deixa-la pendente ate complementar; ou requisito solicitado e ainda nao recebido.",
+      "how": "Hook marca a tarefa como pendente (nao executa), guarda o que falta. Reavalia quando o solicitante complementar.",
+      "fields_dynamic": ["faltando"]
+    },
+    {
+      "code": "VS-REQ-003", "status": "PARTIAL", "title": "Requisito parcial",
+      "short": "[VS-REQ-003] PARTIAL — requisito parcial; falta {faltando}.",
+      "dev_msg": "Requisito parcial. Ja tenho: {presente}. Falta: {faltando}. Posso seguir com risco reduzido se voce confirmar.",
+      "when": "Campos obrigatorios presentes, mas opcionais relevantes (arquivo afetado / regra de negocio) ausentes.",
+      "how": "Hook alerta mas NAO bloqueia; pede confirmacao explicita antes de executar.",
+      "fields_dynamic": ["presente", "faltando"]
+    },
+    {
+      "code": "VS-REQ-004", "status": "AMBIGUOUS", "title": "Requisito ambiguo",
+      "short": "[VS-REQ-004] AMBIGUOUS — decisao de produto necessaria.",
+      "dev_msg": "Requisito ambiguo em: {ponto}. Isso e decisao de produto — preciso do requisito exato antes de executar.",
+      "when": "Ha conflito/ambiguidade que nao e decisao tecnica (ex.: 2 comportamentos possiveis, regra de negocio incerta).",
+      "how": "Hook bloqueia e escala pergunta objetiva ao solicitante. Nunca 'chuta' decisao de produto.",
+      "fields_dynamic": ["ponto"]
+    },
+    {
+      "code": "VS-REQ-005", "status": "READY", "title": "Requisito suficiente",
+      "short": "[VS-REQ-005] READY — requisito suficiente, liberado.",
+      "dev_msg": "Requisito OK. Executando: {resumo}.",
+      "when": "Todos os obrigatorios presentes e sem ambiguidade.",
+      "how": "Hook libera o fluxo; a partir daqui o Escalation Engine (AI) decide se precisa do modelo completo.",
+      "fields_dynamic": ["resumo"]
+    },
+
+    {
+      "code": "VS-AI-001", "status": "ESCALATED", "title": "Escalado para IA",
+      "short": "[VS-AI-001] ESCALATED — motivo: {reason}.",
+      "dev_msg": "Escalando para o modelo completo. Motivo: {reason}.",
+      "when": "Escalation Engine decidiu call_ai=true (causa raiz, arquitetura, seguranca, performance, bug).",
+      "how": "So aqui o modelo completo e acionado. Loga motivo p/ auditoria de custo.",
+      "fields_dynamic": ["reason"]
+    },
+    {
+      "code": "VS-AI-002", "status": "LOCAL", "title": "Resolvido sem IA",
+      "short": "[VS-AI-002] LOCAL — resolvido por hook/MCP, sem modelo.",
+      "dev_msg": "Tratado localmente (hook/MCP). Modelo completo nao foi necessario.",
+      "when": "Tarefa simples / validacao / padronizacao — nao justifica o modelo.",
+      "how": "Conta como 'chamada de IA evitada' na telemetria.",
+      "fields_dynamic": []
+    },
+
+    {
+      "code": "VS-AUD-001", "status": "CHECKING", "title": "Auditando commit",
+      "short": "[VS-AUD-001] CHECKING — commit | testes | lint | diff | doc | seguranca",
+      "dev_msg": "Auditoria de pre-commit em andamento: testes, lint, diff, padrao de commit, doc, seguranca.",
+      "when": "PreToolUse em 'git commit'.",
+      "how": "Hook roda checklist deterministico antes de permitir o commit.",
+      "fields_dynamic": []
+    },
+    {
+      "code": "VS-AUD-002", "status": "APPROVED", "title": "Push autorizado",
+      "short": "[VS-AUD-002] APPROVED — pronto para commit/push.",
+      "dev_msg": "Checklist verde. Commit/push autorizado.",
+      "when": "PreToolUse em 'git push' com checklist OK.",
+      "how": "Hook libera a operacao.",
+      "fields_dynamic": []
+    },
+    {
+      "code": "VS-AUD-003", "status": "BLOCKED", "title": "Push bloqueado",
+      "short": "[VS-AUD-003] BLOCKED — correcoes necessarias: {faltando}.",
+      "dev_msg": "Commit/push bloqueado. Corrija antes de subir:\n{faltando}",
+      "when": "Checklist reprovou (teste vermelho, lint, fora do padrao, sem doc, QA-Gate vermelho ou QA-Gate que nao rodou).",
+      "how": "Hook aborta a operacao (exit 2). Regra ABSOLUTA: so libera no verde — nao existe commit liberado enquanto uma pessoa resolve o problema. Se o gate nao roda, a IA e delegada a resolver o impedimento tecnico ate ficar verde; bloqueio que dependa de pessoas ou de regra de negocio (apos esgotar as tentativas) vira IMPEDIMENTO registrado na doc de fechamento, endereçado ao tech lead ou gestor — mesmo assim, sem verde, sem commit.",
+      "fields_dynamic": ["faltando"]
+    },
+    {
+      "code": "VS-AUD-004", "status": "BLOCKED", "title": "Teste unitário obrigatório (camada extra)",
+      "short": "[VS-AUD-004] BLOCKED — tocou codigo sem teste unitario correspondente: {faltando}.",
+      "dev_msg": "Commit bloqueado: a tarefa tocou codigo de producao sem teste unitario VALIDO correspondente. Camada EXTRA de qualidade, no mesmo nivel do 'so commita no verde'. A IA escreve o teste que cobre a mudanca (nao placeholder vazio) ANTES de commitar, mesmo que nao tenha sido pedido no escopo/alvo. Sem teste, sem commit:\n{faltando}",
+      "when": "PreToolUse git commit: o diff staged criou/alterou arquivo de codigo de producao (backend, front OU mobile) e NAO ha teste unitario cobrindo a mudanca.",
+      "how": "Bloqueia no mesmo nivel do gate verde. Responsabilidade da IA CRIAR o teste correspondente aos 3 stacks (backend: PHPUnit/Pest; front: vitest/jest; mobile: flutter test) conforme o projeto, mesmo sem pedido explicito. 'Teste valido' = cobre a mudanca feita, nao placeholder so pra passar.",
+      "fields_dynamic": ["faltando"]
+    },
+    {
+      "code": "VS-OK-001", "status": "APPROVED", "title": "Aprovado",
+      "short": "[VS-OK-001] APPROVED — ciclo concluido no padrao.",
+      "dev_msg": "Tudo certo. Commit, push e documentacao no padrao.",
+      "when": "Fim do ciclo, tudo verde.",
+      "how": "Marca a tarefa como concluida; registra metricas.",
+      "fields_dynamic": []
+    },
+
+    {
+      "code": "VS-MON-001", "status": "CONSENT", "title": "Consentimento de coleta",
+      "short": "[VS-MON-001] CONSENT — coleta tecnica requer seu aceite.",
+      "dev_msg": "Auditoria tecnica do ambiente corporativo para melhoria continua e seguranca operacional. Coletamos SO dados tecnicos (tempo de tarefa, commits, falhas de pipeline, erros, uso de ferramentas, desempenho). NAO coletamos conteudo pessoal, navegacao pessoal nem dados fora do ambiente corporativo. Metricas sao agregadas e anonimas. Aceita? [sim/nao]",
+      "when": "Primeira execucao / antes de qualquer coleta.",
+      "how": "Sem aceite, nenhuma metrica e coletada. Aceite gravado em consent.json.",
+      "fields_dynamic": []
+    },
+    {
+      "code": "VS-MON-002", "status": "GRANTED", "title": "Coleta autorizada",
+      "short": "[VS-MON-002] GRANTED — coleta tecnica autorizada.",
+      "dev_msg": "Consentimento registrado. Coleta tecnica anonima ativa.",
+      "when": "O usuario aceitou o VS-MON-001.",
+      "how": "Grava consent {granted:true, ts, scope:tecnico}. Metricas passam a ser coletadas.",
+      "fields_dynamic": []
+    },
+    {
+      "code": "VS-MON-003", "status": "DENIED", "title": "Coleta desativada",
+      "short": "[VS-MON-003] DENIED — coleta desativada; governanca segue sem telemetria.",
+      "dev_msg": "Sem consentimento. Governanca (requisito/gate) continua; telemetria fica desativada.",
+      "when": "O usuario recusou o VS-MON-001.",
+      "how": "Nenhuma metrica coletada. Hooks de qualidade seguem funcionando.",
+      "fields_dynamic": []
+    },
+
+    {
+      "code": "VS-BRANCH-001", "status": "BLOCKED", "title": "Origem obrigatória (prompt)",
+      "short": "[VS-BRANCH-001] BLOCKED — origem obrigatoria para criar branch.",
+      "dev_msg": "Pra criar a branch preciso das 3: numero + tipo (fix|feat|refactor|perf|hotfix|chore|test|docs) + ORIGEM (dev/hml/main). Sem origem NAO crio — branch de ambiente errado quebra no merge.",
+      "when": "Hook UserPromptSubmit: pedido de branch (numero da tarefa) sem origem informada.",
+      "how": "Bloqueia o turno ate o solicitante informar a origem. Impede origem assumida.",
+      "fields_dynamic": []
+    },
+    {
+      "code": "VS-BRANCH-002", "status": "BLOCKED", "title": "Origem explícita no comando",
+      "short": "[VS-BRANCH-002] BLOCKED — crie a branch a partir de origin/<origem> explicita.",
+      "dev_msg": "Ex.: git fetch origin <origem> && git checkout -b <tipo>/<autor>/<numero> origin/<origem>. Sem origin/<x> a branch nasce do lugar errado.",
+      "when": "Hook PreToolUse: git checkout -b / switch -c / branch sem base origin/<x>.",
+      "how": "Bloqueia o comando. Forca base de origem explicita.",
+      "fields_dynamic": []
+    },
+    {
+      "code": "VS-BRANCH-004", "status": "BLOCKED", "title": "Trabalho anterior fora do ambiente",
+      "short": "[VS-BRANCH-004] BLOCKED — branch atual tem trabalho nao enviado ao origin.",
+      "dev_msg": "Antes de criar nova branch: commite os arquivos da tarefa + git push -u origin <branch-atual>. Nao inicie tarefa nova deixando a anterior fora do ambiente. Mobile isento (acumula local); back/front obrigatorio.",
+      "when": "Hook PreToolUse: criacao de branch com commits nao pushados ou arquivos nao commitados na branch de tarefa atual (base protegida e mobile isentos).",
+      "how": "Bloqueia a criacao. Forca push do que falta ao ambiente antes de trocar de tarefa.",
+      "fields_dynamic": ["branch_atual", "commits_nao_enviados", "arquivos_nao_commitados"]
+    },
+
+    {
+      "code": "VS-BRANCH-005", "status": "BLOCKED", "title": "Número da tarefa obrigatório no nome da branch",
+      "short": "[VS-BRANCH-005] BLOCKED — branch sem numero da tarefa.",
+      "dev_msg": "O nome da branch precisa carregar o NUMERO da tarefa: <tipo>/fabiano.veloso/<numero>. Sem numero, o commit/push nao rastreia a tarefa. Recrie/renomeie com o numero. Mobile isento.",
+      "when": "Hook PreToolUse: criacao de branch cujo nome nao tem numero, OU commit/push em branch de tarefa (fabiano.veloso) sem numero.",
+      "how": "Bloqueia. Garante rastreabilidade da tarefa no nome da branch e no push.",
+      "fields_dynamic": ["branch"]
+    },
+    {
+      "code": "VS-DOC-001", "status": "REQUIRED", "title": "Documentação obrigatória (pós-push)",
+      "short": "[VS-DOC-001] REQUIRED — documentacao Redmine obrigatoria apos o push.",
+      "dev_msg": "Push feito. Fluxo atomico exige DOC agora (template Backend/Frontend conforme o que tocou). Ao concluir: rm .git/qa-gate-pending-doc.",
+      "when": "Hook PostToolUse: git push concluido.",
+      "how": "Marca pendencia em .git/qa-gate-pending-doc e injeta a ordem. Fecha o fluxo branch->tarefa->gate->commit->push->DOC.",
+      "fields_dynamic": []
+    },
+    {
+      "code": "VS-DOC-002", "status": "BLOCKED", "title": "Doc pendente bloqueia nova tarefa",
+      "short": "[VS-DOC-002] BLOCKED — documente a tarefa anterior antes de iniciar outra.",
+      "dev_msg": "Doc da tarefa anterior pendente. Documente (Redmine) e limpe: rm .git/qa-gate-pending-doc. Só então inicie outra.",
+      "when": "Hook UserPromptSubmit: nova tarefa com .git/qa-gate-pending-doc presente.",
+      "how": "Bloqueia o inicio de nova tarefa/branch. Impede acumular doc pendente.",
+      "fields_dynamic": []
+    },
+
+    {
+      "code": "VS-CONSULT-001", "status": "CONSULT", "title": "Modo consulta/doc (sem commit/push)",
+      "short": "[VS-CONSULT-001] modo consulta/doc — leitura e geracao de documento; sem commit/push.",
+      "dev_msg": "Sessao liberada so p/ consulta e geracao de documento (nao abriu tarefa). NAO commita nem faz push. Pra habilitar: inicie tarefa (numero+tipo+origem).",
+      "when": "Quem usa bateu escape (n/esc/doc/consulta) no fluxo de branch, OU pediu doc avulso p/ repassar a outro papel/pessoa.",
+      "how": "on-task marca modo consulta e libera doc; git-guard bloqueia commit/push ate iniciar tarefa (branch). Doc de TAREFA (branch criada) sobe normal.",
+      "fields_dynamic": []
+    },
+    {
+      "code": "VS-FREE-001", "status": "FREE", "title": "Janela livre pós-push",
+      "short": "[VS-FREE-001] sessao livre apos push — perguntas/duvidas/confirmacoes; muro de branch nao engata.",
+      "dev_msg": "Apos commit+push a sessao fica LIVRE: pergunte, tire duvidas, confirme o que quiser sem o hook exigir dados de branch. A proxima tarefa so re-arma o fluxo quando voce mandar o NUMERO da tarefa, ou disser 'proxima/nova tarefa' ou 'deploy feito'.",
+      "when": "Setado por on-doc apos git push. Vale por 12h ou ate re-armar com a proxima tarefa.",
+      "how": "on-doc chama setFree(sid) no push. on-task, em modo livre, so engata o muro se detectar numero de tarefa ou frase de proxima-tarefa/deploy-feito; senao passa direto. Nova tarefa ainda respeita doc pendente (VS-DOC-002).",
+      "fields_dynamic": []
+    },
+
+    {
+      "code": "VS-ALVO", "status": "REQUIRED", "title": "Alvo obrigatório",
+      "short": "ALVO obrigatorio na tarefa: mobile | front | back — onde atacar.",
+      "dev_msg": "Informe o ALVO (camada). Com o alvo o agente vai DIRETO no codigo certo, sem vasculhar outras camadas (economia de tempo/token).",
+      "when": "4o campo do fluxo de branch (numero+tipo+origem+ALVO).",
+      "how": "Detectado por palavra (mobile/app/flutter; back/api/controller; front/tela/web). Injetado como diretiva: trabalhe SO na camada do alvo. EXCECAO: bug de CRUD/validacao nao trava no alvo (ver VS-CRUD).",
+      "fields_dynamic": []
+    },
+    {
+      "code": "VS-CRUD", "status": "DIAGNOSE", "title": "CRUD/validação → gate diagnostica",
+      "short": "Bug de CRUD/validacao: rode o QA-Gate direto — ele reproduz e mostra o erro real.",
+      "dev_msg": "Nao adivinhe a camada. O gate reproduz o fluxo (ex.: editar paciente), voce ve o erro REAL (DOM/console/screenshot) e corrige com base nisso.",
+      "when": "Task com operacao CRUD (editar/cadastrar/salvar/lista) + sintoma (erro/validacao/mensagem/campo/500/422).",
+      "how": "Nao bloqueia por ALVO (default front, gate-diagnosticavel; mobile explicito respeitado). Injeta diretiva: rode o gate primeiro.",
+      "fields_dynamic": []
+    },
+    {
+      "code": "VS-MOBILE-001", "status": "BLOCKED", "title": "Mobile não faz push",
+      "short": "[VS-MOBILE-001] BLOCKED — mobile nao faz push; acumula local, deploy fim do dia.",
+      "dev_msg": "Mobile acumula commits LOCAIS. Sem push ate o Fabiano pedir; deploy (APK) so no fim do dia. Liberar agora: touch .qa-gate-mobile-ok",
+      "when": "git push num repo mobile (cwd contem /mobile).",
+      "how": "git-guard bloqueia push no mobile salvo override .qa-gate-mobile-ok.",
+      "fields_dynamic": []
+    },
+    {
+      "code": "VS-MOBILE-002", "status": "BLOCKED", "title": "Mobile sem branch de tarefa",
+      "short": "[VS-MOBILE-002] BLOCKED — mobile nao usa branch de tarefa; acumula na branch atual.",
+      "dev_msg": "No mobile nao se cria branch por tarefa — acumula na branch atual; deploy so no fim do dia.",
+      "when": "git checkout -b / branch num repo mobile.",
+      "how": "git-guard bloqueia criacao de branch no mobile.",
+      "fields_dynamic": []
+    }
+  ]
+}
