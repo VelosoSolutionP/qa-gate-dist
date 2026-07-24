@@ -23,6 +23,22 @@ Por [DevPoint Innovation](https://devpointinnovation.com.br/) — Consultoria em
 
 ---
 
+## Suporte a assistentes de IA (Claude / ChatGPT / Gemini)
+
+O QA-Gate é **agnóstico de assistente** no que importa: o gate roda no `git commit` (pre-commit) e não liga pra qual IA escreveu o código — quem commitar código ruim é barrado, seja qual for o assistente.
+
+| Camada | Claude Code | ChatGPT | Gemini | Cursor / outros |
+|---|---|---|---|---|
+| **MCP** (tools `qa_run_gate`, `qa_simulate`…) | ✅ nativo | ✅ via cliente MCP | ✅ via Gemini CLI (MCP) | ✅ qualquer cliente MCP |
+| **Gate no pre-commit (CLI)** | ✅ | ✅ agnóstico | ✅ agnóstico | ✅ |
+| **Governança de fluxo** (muro de tarefa, guard de branch/commit, timer) | ✅ hooks nativos | 🟡 via git hook | 🟡 via git hook | 🟡 via git hook |
+
+- **Nativo total:** Claude Code (plugin + hooks + MCP).
+- **Demais assistentes:** consomem o **MCP** (as tools) e/ou o **pre-commit hook** (`node qa-gate.mjs`) — a qualidade e o bloqueio continuam valendo porque o enforcement é no **git**, não na IA.
+- **Licença offline** em todos: o código nunca sai da máquina.
+
+---
+
 ## Requisitos
 
 - **Node 18+**
