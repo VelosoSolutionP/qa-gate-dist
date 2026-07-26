@@ -21,6 +21,8 @@ Por [DevPoint Innovation](https://devpointinnovation.com.br/) — Consultoria em
 
 > ℹ️ Este repositório é o **artefato de distribuição** (código empacotado). Requer **licença** para rodar.
 
+> 🛠️ **Instalação e configuração são feitas por especialista.** O gate só entrega resultado configurado para o seu ambiente (login/SSO, stack, usuário de QA, fluxos). **Mesmo para testar, fale comigo antes** para eu configurar — sem isso, não há resultado real. Contato **só por WhatsApp: (31) 97512-7978** · devpointinnovation.com.br
+
 ---
 
 ## Suporte a assistentes de IA (Claude / ChatGPT / Gemini)
